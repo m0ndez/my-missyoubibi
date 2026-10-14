@@ -1,0 +1,46 @@
+{
+  "name": "my-missyoubibi",
+  "version": "0.1.0",
+  "description": "Local-network control for Mitsubishi Heavy air conditioners with a WF-RAC Wi-Fi adapter: no cloud, no official app.",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/m0ndez/my-missyoubibi.git" },
+  "engines": { "node": ">=24" },
+  "private": true,
+  "scripts": {
+    "setup": "node scripts/setup.mts",
+    "backend": "node scripts/setup.mts --backend",
+    "dev": "next dev --hostname 127.0.0.1",
+    "dev:lan": "next dev --hostname 0.0.0.0",
+    "sim": "tsx scripts/sim.mts",
+    "check": "tsx lib/password.ts && tsx lib/ac.ts && tsx lib/timers.ts && tsx fallback/mhi-bridge.ts && tsx lib/ha.ts && tsx lib/wfrac.ts && tsx lib/energy.ts && tsx lib/auth.ts && tsx lib/pin.ts && tsx lib/devices.ts && tsx lib/discover.ts",
+    "bridge": "tsx fallback/bridge.mts",
+    "wfrac": "tsx scripts/wfrac.mts",
+    "bundle:bridge": "esbuild scripts/wfrac.mts --bundle --platform=node --format=esm --target=node24 --outfile=dist/bridge.mjs --banner:js='import{createRequire}from\"node:module\";const require=createRequire(import.meta.url);' --legal-comments=none --log-level=warning",
+    "fake": "tsx scripts/fake-adapter.mts",
+    "provision": "tsx scripts/provision.mts",
+    "build": "next build",
+    "typecheck": "tsc --noEmit",
+    "e2e": "tsx scripts/e2e.mts",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "mqtt": "^5.16.0",
+    "next": "16.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "aedes": "^1.2.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.0",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.15",
+    "typescript": "^5"
+  }
+}

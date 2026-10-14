@@ -1,0 +1,25 @@
+name: Bug report
+description: Something doesn't work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: "What happened, and what did you expect?"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+  - type: input
+    id: env
+    attributes:
+      label: "Where it runs (OS, Docker or Podman, version)"
+      placeholder: "Raspberry Pi OS, Docker 27, v0.1.0"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "Output of `docker compose logs --tail 50 bridge app`. Remove anything private."
+      render: shell

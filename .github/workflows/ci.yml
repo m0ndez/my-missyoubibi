@@ -1,0 +1,66 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+permissions: { contents: read }
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run check
+      - run: npm audit --omit=dev
+      - run: npm run build
+      - run: npm run e2e
+
+  stack: # the compose file, the healthchecks (wget, mosquitto_pub, find) and the broker ACL, on the real images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: 24 }
+      - run: node scripts/setup.mts --no-start
+      - run: docker compose config -q
+      - run: docker compose up -d --build
+      - name: Wait until all three services are healthy
+        run: |
+          for i in $(seq 1 60); do
+            n=$(docker compose ps --format '{{.Health}}' | grep -c '^healthy$' || true)
+            [ "$n" = 3 ] && exit 0
+            sleep 5
+          done
+          docker compose ps; docker compose logs --tail 40; exit 1
+      - name: The app answers its health check from outside
+        run: curl -fsS http://127.0.0.1:3000/api/health
+      - if: always()
+        run: docker compose down -v
+
+  images: # both images must build for the Pi (arm64) and for PCs (amd64), each on a native runner; nothing is pushed here
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        target: [app, bridge]
+        platform: [linux/amd64, linux/arm64]
+        include:
+          - { platform: linux/amd64, runner: ubuntu-24.04, arch: amd64 }
+          - { platform: linux/arm64, runner: ubuntu-24.04-arm, arch: arm64 }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          platforms: ${{ matrix.platform }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.target }}-${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.target }}-${{ matrix.arch }},mode=max

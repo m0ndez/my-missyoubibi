@@ -1,0 +1,41 @@
+name: Model report
+description: Tell us whether your air conditioner and adapter work
+labels: [model-report]
+body:
+  - type: input
+    id: indoor
+    attributes:
+      label: Indoor unit model
+      placeholder: "SRK24YYS-W1"
+    validations:
+      required: true
+  - type: input
+    id: adapter
+    attributes:
+      label: Adapter
+      description: "Built-in WF-RAC or a separate module? The last 4 characters of its MAC are fine."
+      placeholder: "WF-RAC, ...B2C3"
+  - type: dropdown
+    id: transport
+    attributes:
+      label: How did the adapter answer?
+      options:
+        - Plain HTTP (port 51443)
+        - HTTPS (port 51443)
+        - Don't know
+  - type: checkboxes
+    id: worked
+    attributes:
+      label: What worked
+      options:
+        - label: Found by "Find units on my network" or added by MAC
+        - label: State shown (power, mode, temperature)
+        - label: Power on and off
+        - label: Mode, setpoint and fan changes
+        - label: Up/down and left/right louvers
+        - label: 3D auto and silent mode
+  - type: textarea
+    id: notes
+    attributes:
+      label: What didn't work, or anything odd
+      description: "No passwords or Wi-Fi keys, please."

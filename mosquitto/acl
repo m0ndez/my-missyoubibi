@@ -1,0 +1,26 @@
+# Who may publish and subscribe to what. Without this file every broker user could do everything (a compromised bridge could
+# send commands to the units; the topics are the contract in lib/ac.ts).
+
+# The web app: owns the unit list, sends commands and scan requests, reads what the bridge reports.
+# It may also write the per-unit topics, only to clear their retained values when a unit is removed.
+user app
+topic write mhi/_devices
+topic write mhi/_scan
+topic write mhi/+/set
+topic readwrite mhi/+/state
+topic readwrite mhi/+/online
+topic readwrite mhi/+/setup
+topic read mhi/_found
+topic write mhi/_health
+# Home Assistant discovery (HA_DISCOVERY=1) and Home Assistant itself, if you connect it as this user
+topic readwrite homeassistant/#
+
+# The bridge: reads the unit list, commands and scan requests; reports what the adapters say. It can't command units itself.
+user device
+topic read mhi/_devices
+topic read mhi/_scan
+topic read mhi/+/set
+topic write mhi/+/state
+topic write mhi/+/online
+topic write mhi/+/setup
+topic write mhi/_found

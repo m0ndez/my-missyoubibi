@@ -1,0 +1,23 @@
+my-missyoubibi is an independent, unofficial project. It is not affiliated with, endorsed by or sponsored by Mitsubishi Heavy
+Industries. "Mitsubishi Heavy Industries", "Smart M-Air" and "WF-RAC" are names of their respective owners, used here only to say
+which products this software works with.
+
+How the adapters' local API works (commands, the base64 state blocks, pairing) was learned from the community project
+"Mitsubishi WF-RAC Integration" by jeatheak and contributors (now maintained by blues-sechseck), in particular its protocol
+reference docs/wf-rac-module-reference.md, and from observing real units. Its licence:
+
+  MIT License
+
+  Copyright (c) 2022 jeatheak
+  Copyright (c) 2026 blues-sechseck
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files
+  (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify,
+  merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included
+  in all copies or substantial portions of the Software.
+
+  (The full text is in that project's LICENSE: https://github.com/blues-sechseck/Mitsubishi-WF-RAC-Integration)
+
+The codec in lib/wfrac.ts and the bridge in scripts/wfrac.mts were written for this project from that documentation and from
+captures of real adapters; no source code was copied from it.

@@ -1,0 +1,213 @@
+@import "tailwindcss";
+
+/* Cool air in a warm room.
+   Light: warm paper neutrals, blue-black ink. Dark: teal graphite, composed on its own rather than inverted.
+   One accent (deep teal in light, aqua in dark) means exactly three things: this unit is on, this is selected, this is the primary
+   action. Nothing else is tinted with it. Every pair below was measured: text 4.5:1 or better, controls and edges 3:1. */
+:root {
+  color-scheme: light dark;
+  --canvas: oklch(0.972 0.006 95);
+  --surface: oklch(0.995 0.003 95);
+  --raised: oklch(0.945 0.009 95);
+  --line: oklch(
+    0.865 0.011 95
+  ); /* hairlines and decoration only: never the only edge of a control */
+  --edge: oklch(
+    0.62 0.015 95
+  ); /* the visible boundary of a control (input, switch, selected segment): 3.1:1 or better on every surface */
+  --ink: oklch(0.21 0.02 230);
+  --muted: oklch(0.47 0.022 230); /* 5.7:1 on raised, 6.9:1 on surface */
+  --accent: oklch(0.5 0.095 195); /* 5.6:1 on surface */
+  --accent-ink: oklch(0.99 0.004 95); /* text on an accent fill: 5.5:1 */
+  --danger: oklch(0.5 0.19 27);
+  --danger-ink: oklch(0.99 0 0); /* text on a danger fill: 6.4:1 */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: oklch(0.165 0.012 215);
+    --surface: oklch(0.21 0.014 215);
+    --raised: oklch(0.265 0.016 215);
+    --line: oklch(0.35 0.016 215);
+    --edge: oklch(0.55 0.016 215); /* 3.2:1 on raised, 3.7:1 on surface */
+    --ink: oklch(0.955 0.006 215);
+    --muted: oklch(0.74 0.02 215); /* 6.7:1 on raised */
+    --accent: oklch(0.8 0.1 190); /* 9.9:1 on surface */
+    --accent-ink: oklch(0.17 0.03 215); /* 10.6:1 on accent */
+    --danger: oklch(0.75 0.15 25);
+    --danger-ink: oklch(
+      0.17 0.03 215
+    ); /* the danger fill is light here, so its text is dark: 7.9:1 (white would be 2.4:1) */
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-edge: var(--edge);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-danger: var(--danger);
+  --color-danger-ink: var(--danger-ink);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Type: six roles, named for the job. Geist throughout (one family; its numerals are tabular).
+   display  the setpoint, light weight so the number reads as an instrument and not as a headline
+   page     the one h1
+   section  Timers, Energy
+   title    a unit's name
+   ui       statuses, buttons, descriptions: the working size
+   label    field and group labels
+   meta     adapter, MAC, captions, counts: the smallest text in the app, never below 13px
+   Weights: 300 display, 600 titles, 500 labels and controls, 400 reading text. Inputs are 16px (the page text size) so iOS doesn't
+   zoom the page when one is focused. */
+@theme {
+  --text-display: 3.5rem;
+  --text-display--line-height: 1;
+  --text-page: 1.5rem;
+  --text-page--line-height: 1.25;
+  --text-section: 1.25rem;
+  --text-section--line-height: 1.3;
+  --text-title: 1.0625rem;
+  --text-title--line-height: 1.3;
+  --text-ui: 0.9375rem;
+  --text-ui--line-height: 1.5;
+  --text-label: 0.875rem;
+  --text-label--line-height: 1.4;
+  --text-meta: 0.8125rem;
+  --text-meta--line-height: 1.45;
+}
+
+html {
+  scrollbar-color: var(--line) transparent;
+  accent-color: var(--accent);
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Light text on a dark surface looks thinner and tighter than the same text on paper: a touch more tracking. */
+@media (prefers-color-scheme: dark) {
+  body {
+    letter-spacing: 0.006em;
+  }
+}
+
+h1,
+h2 {
+  text-wrap: balance;
+}
+p {
+  text-wrap: pretty;
+}
+
+::selection {
+  background: color-mix(in oklch, var(--accent) 30%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button,
+label,
+select {
+  touch-action: manipulation;
+}
+
+button:not(:disabled),
+select:not(:disabled) {
+  cursor: pointer;
+}
+
+/* Motion. Two authored moments, both on the same easing (exponential ease-out): a panel opening or closing, and a card arriving.
+   Opening animates the panel's height (`interpolate-size` lets `height` go to `auto`) and fades it; browsers without
+   ::details-content simply open instantly, which is fine. */
+:root {
+  interpolate-size: allow-keywords;
+}
+details::details-content {
+  height: 0;
+  overflow: clip;
+  overflow-clip-margin: 8px; /* clipping to the box would cut off a selection ring on a tile at the panel's edge */
+  opacity: 0;
+  transition:
+    height 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.22s ease-out,
+    content-visibility 0.32s allow-discrete;
+}
+details[open]::details-content {
+  height: auto;
+  opacity: 1;
+}
+
+/* A unit card arriving (first load, or a unit just added). */
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+.card-in {
+  animation: card-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Reduced motion: nothing slides, spins or loops. Colour and opacity still fade, so a state change (a switch, a selection) stays
+   visible instead of snapping, which is what a blanket "make every transition instant" rule gets wrong. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition-property:
+      color, background-color, border-color, outline-color, box-shadow, opacity !important;
+    scroll-behavior: auto !important;
+  }
+  details::details-content {
+    transition:
+      opacity 0.15s linear,
+      content-visibility 0.15s allow-discrete;
+  }
+}
+
+/* Louver pictures: swing is a slow sweep between the two extremes; reduced motion shows the static mid position. */
+@keyframes sweep-ud {
+  from {
+    transform: rotate(-14deg);
+  }
+  to {
+    transform: rotate(70deg);
+  }
+}
+@keyframes sweep-lr {
+  from {
+    transform: rotate(32deg);
+  }
+  to {
+    transform: rotate(-32deg);
+  }
+}
+.sweep-ud {
+  animation: sweep-ud 3.4s ease-in-out infinite alternate;
+}
+.sweep-lr {
+  animation: sweep-lr 3.4s ease-in-out infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sweep-ud,
+  .sweep-lr {
+    animation: none;
+  }
+}

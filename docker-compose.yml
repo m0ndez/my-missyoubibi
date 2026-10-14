@@ -1,0 +1,92 @@
+# `npm run setup` writes .env and starts this. Broker, web app and the bridge to the air conditioners all run here.
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    # Published on this machine only, for `npm run dev`. The app and the bridge reach it over the compose network.
+    ports: ["${MQTT_BIND:-127.0.0.1}:1883:1883"]
+    environment:
+      MQTT_PASS: ${MQTT_PASS:?run npm run setup}
+      MQTT_DEVICE_PASS: ${MQTT_DEVICE_PASS:?run npm run setup}
+    # The broker users come from .env, so there is no password file to create by hand.
+    command:
+      - sh
+      - -c
+      - |
+        rm -f /tmp/passwd &&
+        mosquitto_passwd -b -c /tmp/passwd app "$$MQTT_PASS" &&
+        mosquitto_passwd -b /tmp/passwd device "$$MQTT_DEVICE_PASS" &&
+        chown mosquitto /tmp/passwd &&
+        exec mosquitto -c /mosquitto/config/mosquitto.conf
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/acl:/mosquitto/config/acl:ro
+      - mosquitto-data:/mosquitto/data
+    healthcheck:
+      test: ["CMD-SHELL", 'mosquitto_pub -h localhost -u app -P "$$MQTT_PASS" -t mhi/_health -m 1']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # Talks to the adapters. It reaches the LAN through the host's network (outbound only) and finds each unit by its MAC.
+  bridge:
+    image: ghcr.io/m0ndez/my-missyoubibi-bridge:${VERSION:-latest}
+    build: { context: ., target: bridge }
+    restart: unless-stopped
+    depends_on:
+      mosquitto: { condition: service_healthy }
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck: # the bridge touches this file every 15 s while it is connected to the broker
+      test: ["CMD-SHELL", "find /tmp/heartbeat -mmin -1 | grep -q ."]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    environment:
+      TZ: ${TZ:-UTC}
+      WFRAC_HEARTBEAT: /tmp/heartbeat
+      MQTT_URL: mqtt://mosquitto:1883
+      MQTT_USER: device
+      MQTT_PASS: ${MQTT_DEVICE_PASS:?run npm run setup}
+      DATA_DIR: /data
+      WFRAC_WRITE: "1"
+      WFRAC_SUBNET: ${WFRAC_SUBNET:-} # the LAN to scan, detected by `npm run setup`
+      WFRAC_DEVICES: ${WFRAC_DEVICES:-} # optional fixed addresses, id=ip,...
+      WFRAC_REPIN: ${WFRAC_REPIN:-}
+    volumes: ["bridge-data:/data"] # its identity on the adapters (operator id) and certificate pins: keep it
+
+  app:
+    image: ghcr.io/m0ndez/my-missyoubibi-app:${VERSION:-latest}
+    build: { context: ., target: app }
+    restart: unless-stopped
+    depends_on:
+      mosquitto: { condition: service_healthy }
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/health"] # non-2xx (broker unreachable) fails it
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    ports: ["${APP_BIND:-127.0.0.1}:3000:3000"] # plain HTTP, so localhost only by default: put TLS in front (`tailscale serve`), or set APP_BIND=0.0.0.0 to use it over the LAN
+    environment:
+      TZ: ${TZ:-UTC} # timers and daily energy totals use this timezone (npm run setup detects yours)
+      MQTT_URL: mqtt://mosquitto:1883
+      MQTT_USER: app
+      MQTT_PASS: ${MQTT_PASS:?run npm run setup}
+      APP_PASSWORD: ${APP_PASSWORD:?run npm run setup}
+      AUTH_SECRET: ${AUTH_SECRET:?run npm run setup}
+      # Compose passes only what is listed: these are read by the app and set in .env (all optional)
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
+      HA_DISCOVERY: ${HA_DISCOVERY:-}
+      ENERGY_RATE: ${ENERGY_RATE:-}
+      ENERGY_CURRENCY: ${ENERGY_CURRENCY:-}
+    volumes: ["app-data:/data"]
+
+volumes:
+  mosquitto-data:
+  bridge-data:
+  app-data:

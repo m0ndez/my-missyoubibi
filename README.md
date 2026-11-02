@@ -1,7 +1,9 @@
 # my-missyoubibi
 
 Control your Mitsubishi Heavy air conditioners from a fast web page on your own network, instead of the slow official app.
-It talks to the units' existing **WF-RAC Wi-Fi adapters** over your local network: no cloud, no account, no extra hardware.
+It talks to the units' existing **WF-RAC Wi-Fi adapters** over your local network. The default, the **Home deployment**, runs entirely on your own
+network: no cloud, no account, no extra hardware. An optional [Cloud deployment](docs/cloud-deployment.md) runs the page and the broker on a
+VPS of yours and keeps only the bridge at home.
 
 > The name is a joke from someone who got tired of waiting for the official app to load.
 > **Unofficial.** Not affiliated with, endorsed by or sponsored by Mitsubishi Heavy Industries. It drives real hardware over a
@@ -42,7 +44,7 @@ Setup detects your network, writes `.env` with strong generated secrets, asks wh
 with the password in `.env` (`APP_PASSWORD`), and use **Add a unit → Find units on my network**. The first run starts with no units.
 
 Next: [install details](docs/install.md) (phone and remote access with HTTPS, updating, backup, uninstall),
-[add a unit](docs/add-a-unit.md), [troubleshooting](docs/troubleshooting.md).
+[add a unit](docs/add-a-unit.md), [troubleshooting](docs/troubleshooting.md), [Cloud deployment](docs/cloud-deployment.md) (control from anywhere).
 
 ## How it works
 
@@ -50,7 +52,7 @@ Next: [install details](docs/install.md) (phone and remote access with HTTPS, up
  browser ──▶ app ◀──MQTT──▶ mosquitto ◀──MQTT──▶ bridge ──HTTP(S) :51443──▶ WF-RAC adapters
 ```
 
-Three containers: the **app** (web page, API, timers, energy), a **broker**, and a **bridge** that finds each adapter by its MAC,
+In the Home deployment, three containers: the **app** (web page, API, timers, energy), a **broker**, and a **bridge** that finds each adapter by its MAC,
 polls it every 5 seconds and sends your changes. The page never talks to an adapter directly. More in
 [architecture](docs/architecture.md); the adapters' protocol is written up in [firmware notes](docs/firmware.md).
 
@@ -58,8 +60,9 @@ polls it every 5 seconds and sends your changes. The page never talks to an adap
 
 One shared password (the app refuses to start with a weak one), signed session cookies, a same-origin check on every change, a
 broker with per-user access rules, and the app listening on localhost only until you put HTTPS in front of it. The adapters have no
-login of their own: anyone on your LAN can already control them. Never expose the app or the broker to the internet. Read
-[SECURITY.md](SECURITY.md) before opening it up.
+login of their own: anyone on your LAN can already control them. In the Home deployment, never expose the app or the broker to the internet.
+The Cloud deployment is built to be exposed, in a different way: see its [security model](docs/cloud-deployment.md#security-model). Read
+[SECURITY.md](SECURITY.md) before opening either up.
 
 ## Models
 

@@ -6,6 +6,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 ## [Unreleased]
 
 ### Added
+- An optional Cloud deployment ([docs/cloud-deployment.md](docs/cloud-deployment.md)): the app and the broker on a VPS (`docker-compose.cloud.yml`: the app behind a Cloudflare Tunnel and Access, a TLS broker listener for the bridge only, a renewing certificate, a nightly backup to R2 with a restore), and only the bridge at home (`docker-compose.bridge.yml`). The Home deployment is unchanged.
 - When the page's live stream fails and the session has been sent to a sign-in page (as Cloudflare Access does), the page reloads to sign in again instead of retrying forever; a plain network blip still just reconnects.
 - The bridge can connect to the broker over TLS (`MQTT_URL=mqtts://…`) and stops with a clear error if the broker's certificate doesn't verify; a plain `mqtt://` address works as before.
 - A command for an offline unit is refused with a message on the page and is never queued; a timer that comes due for an offline unit is skipped (a one-shot counts as missed) instead of firing late.

@@ -175,3 +175,15 @@ docker volume rm <directory>_app-data
 docker compose -f docker-compose.cloud.yml --env-file .env.cloud --profile restore run --rm restore
 docker compose -f docker-compose.cloud.yml --env-file .env.cloud up -d
 ```
+
+## Security model
+
+What the Cloud deployment exposes, and what protects it. The Home deployment's rules ([SECURITY.md](../SECURITY.md)) do not apply to it as written: that page's "never expose" lines are about the Home deployment.
+
+- **The App** is reachable only through Cloudflare. Cloudflare Access (an email one-time PIN, only the household's addresses) stands in front, then the App's own shared password, signed cookies and login delay. The VPS has no inbound web port. Cloudflare terminates TLS for this name, so Cloudflare can see the traffic between the phone and the App.
+- **The Broker's 8883 listener** is the one public port. Only the `device` user can log in on it (a separate password file from `app`), with a certificate the Bridge verifies. `mosquitto/acl` lets that user publish only what a Bridge should: it cannot command Units or rewrite the unit list. Messages and connections are capped.
+- **The plain listener (1883)** is not published; only the App reaches it, over the compose network.
+- **The VPS's address is public**, because the Broker's name must be DNS-only (Cloudflare's proxy cannot carry 8883). The firewall (8883 and SSH only) is the protection; keep SSH to keys only.
+- **Secrets** (the tunnel token, the Broker passwords, the shared password, the session secret, the Cloudflare API and R2 tokens) are read from `.env.cloud` on the VPS only. The home machine holds only the Bridge's own Broker password. Scope the Cloudflare API token to one zone and DNS edit, and the R2 token to the one bucket.
+- **Commands are not queued.** A Bridge outage means missed timers and refused commands, not commands that fire later.
+- **The adapters** still have no login of their own and stay on your home network: only the Bridge reaches them.

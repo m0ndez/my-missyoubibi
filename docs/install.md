@@ -1,5 +1,8 @@
 # Install
 
+This guide sets up the **Home deployment**: everything runs on one computer at home. To run the page and the broker on a VPS instead, and keep only
+the bridge at home, see [Cloud deployment](#cloud-deployment) at the end.
+
 ## What you need
 
 - A computer that stays on at home: a Raspberry Pi 4/5, a mini PC or a NAS (Linux, amd64 or arm64) is the intended home. A
@@ -60,7 +63,7 @@ The page answers only to its own addresses: `localhost`, private and Tailscale I
 `.ts.net`, and single-word names. Behind a domain of your own (a reverse proxy), list it in `ALLOWED_HOSTS` (a request for any other
 name gets `421 Unknown host`).
 
-Never port-forward port 3000 or 1883 on your router. Signing out (button in the page header) signs out every device; sessions
+In the Home deployment, never port-forward port 3000 or 1883 on your router. Signing out (button in the page header) signs out every device; sessions
 last 14 days.
 
 ## Home Assistant
@@ -148,3 +151,18 @@ Your adapters and the Smart M-Air app are not changed by any of this.
   if the detected network is wrong (virtual adapters), set `WFRAC_SUBNET` in `.env` by hand.
 - Containers can't use mDNS (`<mac>.local`) from inside Docker's network, so the bridge scans the subnet instead (it finds each adapter
   by its MAC, so changing addresses are fine).
+
+## Cloud deployment
+
+An optional alternative to everything above, for control from anywhere without Tailscale on each phone: the App and the Broker run on a VPS and
+only the Bridge stays at home, connecting outward. It uses the same images and the same code. The full guide is
+[cloud-deployment.md](cloud-deployment.md); the steps, in order:
+
+1. [Prepare the VPS](cloud-deployment.md#1-prepare-the-vps): settings, secrets and the firewall (inbound 8883 and SSH only).
+2. [The Broker's hostname and certificate](cloud-deployment.md#2-broker-hostname-and-certificate).
+3. [Publish the App through a tunnel, behind Cloudflare Access](cloud-deployment.md#3-publish-the-app-tunnel-and-access).
+4. [Run the Bridge at home](cloud-deployment.md#4-run-the-bridge-at-home) with `docker-compose.bridge.yml`.
+5. [Move your data over](cloud-deployment.md#5-move-your-data-from-the-home-deployment-once) from the Home deployment, once.
+6. [Nightly backup to R2, and restore](cloud-deployment.md#6-nightly-backup-to-r2-and-restore).
+
+Before you rely on it, read its [security model](cloud-deployment.md#security-model).

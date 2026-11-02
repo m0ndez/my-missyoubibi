@@ -1,12 +1,15 @@
 # Architecture
 
+There are two deployments of the same code: the **Home deployment** (everything on the home network, below) and the optional
+**Cloud deployment** (the App and the Broker on a VPS, [further down](#the-cloud-deployment)).
+
 ```
  browser ──HTTP + SSE──▶ app ──MQTT (user: app)──▶ mosquitto ◀──MQTT (user: device)── bridge ──HTTP(S) :51443──▶ WF-RAC adapters
                           │  timers, energy, login               (acl: mosquitto/acl)   (scripts/wfrac.mts)
                           └─ /data (JSON files)
 ```
 
-Three processes in three containers. The page never talks to an adapter: the bridge translates between MQTT and each adapter's
+In the Home deployment, three processes in three containers. The page never talks to an adapter: the bridge translates between MQTT and each adapter's
 protocol, so the web app doesn't depend on the hardware (the dev simulator, a fake adapter and the real units all use the same topics).
 
 ## The MQTT contract
@@ -78,4 +81,24 @@ image digests and the npm packages current (npm minor and patch updates are grou
   [SECURITY.md](../SECURITY.md).
 - Everything from the LAN is untrusted input: adapter replies (size and shape checked, ranges checked before anything is published),
   MQTT payloads (shape checked), HTTP bodies (size capped, parsed against a whitelist).
-- Secrets live in `.env` (mode 600) and in the volumes; nothing is sent to any cloud.
+- Secrets live in `.env` (mode 600) and in the volumes; in the Home deployment nothing is sent to any cloud. The Cloud deployment keeps its
+  secrets in `.env.cloud` on the VPS only: see its [security model](cloud-deployment.md#security-model).
+
+## The Cloud deployment
+
+The same App, Broker and Bridge, split across two places. The decision and what it costs: [ADR 0001](adr/0001-vps-first-cloud-deployment.md). The steps:
+[cloud-deployment.md](cloud-deployment.md).
+
+```
+ browser ──HTTPS──▶ Cloudflare (Access, Tunnel) ◀──outbound── tunnel ──▶ app ──MQTT :1883 (compose network only)──▶ mosquitto
+                                                                                                                    ▲
+ home: bridge ──MQTTS :8883 (DNS-only hostname, verified certificate, user: device)─────────────────────────────────┘
+       └──HTTP(S) :51443──▶ WF-RAC adapters
+```
+
+- **Unchanged:** the MQTT contract above, the App, the Bridge's behaviour and the Home deployment's compose file. The Bridge only gets a TLS Broker URL.
+- **Broker:** two listeners with their own users. 1883 (plain, not published) accepts `app`; 8883 (TLS, public) accepts `device`. Both use `mosquitto/acl`.
+  A certificate from Let's Encrypt, issued by DNS-01 through Cloudflare, is renewed by a sidecar that signals the Broker to re-read it.
+- **Outages:** the Bridge's last-will on `mhi/_bridge/online` makes every Unit show offline within about 30 s of the home internet going down.
+  A command for an offline Unit is refused, and a timer that comes due for one is skipped (a one-shot counts as missed); nothing is queued.
+- **Backup:** the App's data volume goes to R2 every night. The Bridge's volume stays at home.

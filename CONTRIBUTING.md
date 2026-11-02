@@ -18,7 +18,7 @@ No hardware? `npm run sim` is a dev broker with fake units, and `npm run fake --
 
 ```bash
 npm run typecheck && npm run lint && npm run check
-npm run build && npm run e2e   # the end-to-end smoke test (broker, bridge, fake adapter, built app)
+npm run build && npm run e2e   # the end-to-end smoke test (broker, bridge, fake adapter, built app); needs `openssl` for its test certificate. `npm run e2e:plain` runs the bridge over plain MQTT instead of TLS
 ```
 
 CI runs the same, plus Docker builds for amd64 and arm64 (each on a native runner).

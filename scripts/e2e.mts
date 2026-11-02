@@ -1,17 +1,19 @@
 // End-to-end smoke test: `npm run build && npm run e2e`. Starts everything for real, on throwaway ports and data:
 //   broker (in-process) <- built app (next start) -> broker <- bridge (scripts/wfrac.mts) -> fake adapter (127.0.0.1:51443)
+// The bridge reaches the broker over a TLS listener with a throwaway certificate (E2E_PLAIN_BRIDGE=1 uses the plain one instead), and must refuse a certificate it does not trust.
 // (needs `npm run build` first: it runs the standalone server). Then drives it only through the app's public API: sign in, add a unit by MAC, see it online, power it on, change the setpoint,
 // lose and regain the bridge (the page must show the unit offline, then online), remove it. Exits non-zero on the first thing that doesn't happen.
 import { Aedes } from "aedes";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import tls from "node:tls";
 import mqtt from "mqtt";
 
-const BROKER = 18830, APP = 18831, MAC = "001122334455", ORIGIN = `http://127.0.0.1:${APP}`;
+const BROKER = 18830, APP = 18831, TLS_BROKER = 18832, MAC = "001122334455", ORIGIN = `http://127.0.0.1:${APP}`;
 const PASSWORD = "e2e-Password-1234", SECRET = "e".repeat(40);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-"));
 const children: ChildProcess[] = [];
@@ -36,6 +38,9 @@ async function until<T>(what: string, f: () => Promise<T | undefined | false> | 
 // ---- infrastructure ------------------------------------------------------------------------------------------------
 const aedes = await Aedes.createBroker();
 const server = net.createServer(aedes.handle).listen(BROKER);
+const certFile = path.join(tmp, "broker.pem"), keyFile = path.join(tmp, "broker.key");
+execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyFile, "-out", certFile, "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1,DNS:localhost"], { stdio: "ignore" });
+const tlsServer = tls.createServer({ key: fs.readFileSync(keyFile), cert: fs.readFileSync(certFile) }, aedes.handle).listen(TLS_BROKER);
 
 const fakeAdapter = start("fake", "npx", ["tsx", "scripts/fake-adapter.mts", MAC], {});
 await until("the fake adapter", () => new Promise<boolean>((res) => { const s = net.connect(51443, "127.0.0.1"); s.once("connect", () => { s.destroy(); res(true); }); s.once("error", () => res(false)); }));
@@ -47,11 +52,27 @@ start("app", "node", [".next/standalone/server.js"], {
   ...common, APP_PASSWORD: PASSWORD, AUTH_SECRET: SECRET, DATA_DIR: path.join(tmp, "app"), HA_DISCOVERY: "",
   NODE_ENV: "production", PORT: String(APP), HOSTNAME: "127.0.0.1",
 });
+const plainBridge = !!process.env.E2E_PLAIN_BRIDGE;
 const bridgeEnv = {
-  ...common, DATA_DIR: path.join(tmp, "bridge"), WFRAC_WRITE: "1", WFRAC_DEVICES: "e2e=127.0.0.1", WFRAC_CURL: "", WFRAC_SUBNET: "",
+  ...common, MQTT_URL: plainBridge ? common.MQTT_URL : `mqtts://127.0.0.1:${TLS_BROKER}`, NODE_EXTRA_CA_CERTS: certFile, DATA_DIR: path.join(tmp, "bridge"), WFRAC_WRITE: "1", WFRAC_DEVICES: "e2e=127.0.0.1", WFRAC_CURL: "", WFRAC_SUBNET: "",
 };
 // Run through node directly (not npx), so killing it really kills the bridge and the broker sees a dropped connection.
-const startBridge = () => start("bridge", "node", ["--import", "tsx", "scripts/wfrac.mts"], bridgeEnv);
+const BRIDGE_CMD = ["--import", "tsx", "scripts/wfrac.mts"];
+const startBridge = () => start("bridge", "node", BRIDGE_CMD, bridgeEnv);
+
+// A bridge that does not trust the broker's certificate must stop with a clear error, not retry forever or connect anyway.
+if (!plainBridge) {
+  const untrusting = spawn("node", BRIDGE_CMD, {
+    env: { ...process.env, ...bridgeEnv, NODE_EXTRA_CA_CERTS: "", DATA_DIR: path.join(tmp, "bridge-untrusting") }, stdio: ["ignore", "ignore", "pipe"],
+  });
+  children.push(untrusting);
+  let err = "";
+  untrusting.stderr.on("data", (d) => (err += d));
+  const code = await new Promise<number | null>((res) => { const t = setTimeout(() => res(null), 20_000); untrusting.once("exit", (c) => { clearTimeout(t); res(c); }); });
+  if (code === null || code === 0) fail(`a bridge that does not trust the certificate must exit with an error, got ${code}`);
+  if (!/refusing to connect/.test(err)) fail(`the untrusted certificate error must say so, got: ${err.trim()}`);
+  console.log("a bridge that does not trust the broker's certificate refuses it");
+}
 let bridge = startBridge();
 
 // What the bridge publishes, seen from outside.
@@ -166,6 +187,7 @@ console.log("\nPASS: end-to-end smoke test");
 watcher.end(true);
 stopAll();
 server.close();
+tlsServer.close();
 await aedes.close();
 fakeAdapter.kill();
 fs.rmSync(tmp, { recursive: true, force: true });

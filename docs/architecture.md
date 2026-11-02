@@ -26,6 +26,8 @@ Defined in `lib/ac.ts`. `<id>` is the unit's id (letters, digits, dashes).
 | `homeassistant/…` | app → Home Assistant | discovery messages, when `HA_DISCOVERY=1` |
 
 The broker's rules (`mosquitto/acl`) match this table: the bridge can't publish `set` or `_devices`, the app can't publish `_found`.
+
+The bridge's `MQTT_URL` may be `mqtts://`: it then verifies the broker's certificate against Node's trusted roots (plus `NODE_EXTRA_CA_CERTS`) and exits with an error if it doesn't verify. A plain `mqtt://` address behaves as before.
 Messages are limited to 64 KB.
 
 ## The bridge

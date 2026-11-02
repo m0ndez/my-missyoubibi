@@ -309,9 +309,18 @@ const client = mqtt.connect(process.env.MQTT_URL ?? "mqtt://localhost:1883", {
   // One last-will for the whole bridge (a connection has only one): if it drops, the app shows every unit offline.
   // A short keepalive makes the broker notice a silent drop (home internet cut) in about 22 s, not the 90 s the default would take.
   keepalive: 15,
+  rejectUnauthorized: true, // an mqtts:// broker must present a certificate Node trusts (its built-in roots plus NODE_EXTRA_CA_CERTS); also beats NODE_TLS_REJECT_UNAUTHORIZED=0
   will: { topic: "mhi/_bridge/online", payload: Buffer.from("0"), retain: true, qos: 1 },
 });
-client.on("error", (e) => console.error("mqtt:", e.message));
+// A certificate that does not verify will not start verifying by retrying: say why and stop, so the orchestrator's restart policy is the only retry.
+const CERT_REJECTED = /^(CERT_|DEPTH_ZERO_SELF_SIGNED_CERT|SELF_SIGNED_CERT_IN_CHAIN|UNABLE_TO_|ERR_TLS_CERT|HOSTNAME_MISMATCH|INVALID_CA|INVALID_PURPOSE|PATH_LENGTH_EXCEEDED)/;
+client.on("error", (e) => {
+  console.error("mqtt:", e.message);
+  if (CERT_REJECTED.test((e as NodeJS.ErrnoException).code ?? "")) {
+    console.error("mqtt: the broker's certificate does not verify against Node's trusted roots; refusing to connect");
+    process.exit(1);
+  }
+});
 client.on("connect", () => {
   client.publish("mhi/_bridge/online", "1", { retain: true, qos: 1 });
   client.subscribe(["mhi/_devices", "mhi/_scan", "mhi/+/set"]);

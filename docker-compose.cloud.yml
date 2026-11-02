@@ -1,6 +1,17 @@
 # Cloud deployment, VPS side: `docker compose -f docker-compose.cloud.yml --env-file .env.cloud up -d`. Settings: .env.cloud.example.
 # Broker listeners: 1883 plain, compose network only (the web app); 8883 TLS, public, the bridge's `device` user only.
 # The web app is published only through the tunnel connector (outbound connection to Cloudflare): no web port is opened on the VPS.
+# Cloudflare R2 through rclone, configured entirely from the environment (no config file). The bucket-scoped token cannot create
+# buckets, hence NO_CHECK_BUCKET.
+x-r2: &r2
+  BACKUP_REMOTE: r2:${R2_BUCKET:?set it in .env.cloud}
+  RCLONE_CONFIG_R2_TYPE: s3
+  RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+  RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:?set it in .env.cloud}
+  RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:?set it in .env.cloud}
+  RCLONE_CONFIG_R2_ENDPOINT: https://${R2_ACCOUNT_ID:?set it in .env.cloud}.r2.cloudflarestorage.com
+  RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+
 services:
   mosquitto:
     image: eclipse-mosquitto:2
@@ -99,6 +110,36 @@ services:
       app: { condition: service_healthy }
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+
+  # Copies the app's data to R2 every night (cloud/backup.sh). Restore: `docker compose --profile restore run --rm restore`, see docs/cloud-deployment.md.
+  backup:
+    image: rclone/rclone:1.75.2
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    user: "1000:1000" # the app's own user, so it can read every file in the volume and needs no capabilities
+    environment:
+      <<: *r2
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:mode=1777"] # the archive is built here, off disk
+    volumes:
+      - ./cloud/backup.sh:/backup.sh:ro
+      - app-data:/data:ro
+
+  # Not started by `up`. Fills an EMPTY app-data volume from the newest backup (or the archive named after `run --rm restore`).
+  restore:
+    image: rclone/rclone:1.75.2
+    profiles: [restore]
+    entrypoint: ["/bin/sh", "/restore.sh"]
+    environment: *r2
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER] # write into the volume's directory and give the files to the app's user
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:mode=1777"]
+    volumes:
+      - ./cloud/restore.sh:/restore.sh:ro
+      - app-data:/data
 
 volumes:
   mosquitto-data:

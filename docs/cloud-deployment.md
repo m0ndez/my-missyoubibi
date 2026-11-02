@@ -134,3 +134,44 @@ This copies the Units, timers and energy history to the VPS. It changes nothing 
 ### Going back
 
 Stop the Bridge there (`docker compose -f docker-compose.bridge.yml stop`) and start the Home deployment again (`docker compose start`). Its volumes were not touched. Keep them for a week or so before removing them.
+
+## 6. Nightly backup to R2, and restore
+
+The `backup` service copies the App's data volume (Units, timers, energy history, the sign-out marker) to a Cloudflare R2 bucket at 03:00 UTC every night, and once when it starts. The Bridge's own volume is **not** backed up off the home machine; if it is lost, the Bridge pairs with the adapters again.
+
+### Set up
+
+1. In Cloudflare **R2**, create a private bucket and note your account id.
+2. Create an R2 API token with **Object Read & Write**, limited to that one bucket (R2 → Manage API tokens).
+3. Put `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` in `.env.cloud` on the VPS. They exist nowhere else. `BACKUP_KEEP_DAYS` (default 30) sets the retention: after each successful backup, archives older than that are deleted. A backup that fails never deletes anything.
+4. `docker compose -f docker-compose.cloud.yml --env-file .env.cloud up -d`, then check the first run: `docker compose -f docker-compose.cloud.yml --env-file .env.cloud logs backup` ends with `backup app-data-<time>.tar.gz done`.
+
+List what is in the bucket:
+
+```bash
+docker compose -f docker-compose.cloud.yml --env-file .env.cloud run --rm --no-deps --entrypoint sh backup -c 'rclone lsf "$BACKUP_REMOTE"'
+```
+
+### Restore
+
+The `restore` service fills an **empty** `app-data` volume from the newest archive, or from the archive you name. It refuses a volume that has files in it, so it cannot overwrite live data by mistake.
+
+**On a new VPS** (the usual case: the old one is gone). Do steps 1 and 2 above to the point where `.env.cloud` is filled in, then **before** starting the App:
+
+```bash
+docker compose -f docker-compose.cloud.yml --env-file .env.cloud --profile restore run --rm restore
+# or a specific archive: ... run --rm restore app-data-20261101T030000Z.tar.gz
+docker compose -f docker-compose.cloud.yml --env-file .env.cloud up -d
+```
+
+Then check what you would check after a cutover: the Unit names, the timers, and the energy totals for the days before today.
+
+**Onto a VPS that already runs** (for example after a bad edit). This deletes the data now in the volume, and it cannot be undone, so first make sure the backup you are about to restore is the one you want (`lsf` above). Then:
+
+```bash
+docker compose -f docker-compose.cloud.yml --env-file .env.cloud rm -sf app backup
+docker volume ls | grep app-data      # the volume is named <directory>_app-data
+docker volume rm <directory>_app-data
+docker compose -f docker-compose.cloud.yml --env-file .env.cloud --profile restore run --rm restore
+docker compose -f docker-compose.cloud.yml --env-file .env.cloud up -d
+```

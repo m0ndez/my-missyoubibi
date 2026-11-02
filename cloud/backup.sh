@@ -7,16 +7,17 @@ umask 077
 trap 'exit 0' TERM # PID 1 ignores TERM otherwise, and `docker stop` waits 10 s for a kill
 keep="${BACKUP_KEEP_DAYS:-30}"
 
+# `set -e` is ignored inside a function called after `||`, so the steps are chained with && : a failed step must stop the prune.
 backup() {
   name="app-data-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
-  tar -C /data -czf "/tmp/$name" . # the app writes each file by rename, so a file is whole or absent
-  rclone copyto "/tmp/$name" "$BACKUP_REMOTE/$name"
-  rm -f "/tmp/$name"
-  rclone delete "$BACKUP_REMOTE" --include 'app-data-*.tar.gz' --min-age "${keep}d"
-  echo "backup $name done"
+  tar -C /data -czf "/tmp/$name" . && # the app writes each file by rename, so a file is whole or absent
+    rclone copyto "/tmp/$name" "$BACKUP_REMOTE/$name" &&
+    rm -f "/tmp/$name" &&
+    rclone delete "$BACKUP_REMOTE" --include 'app-data-*.tar.gz' --min-age "${keep}d" &&
+    echo "backup $name done"
 }
 
-[ -z "${BACKUP_ONCE:-}" ] || { backup; exit 0; }
+[ -z "${BACKUP_ONCE:-}" ] || { backup; exit; }
 while :; do
   backup || echo "backup failed, trying again tomorrow" >&2
   now=$(date -u +%s)

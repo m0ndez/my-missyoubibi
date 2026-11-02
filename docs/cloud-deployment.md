@@ -63,7 +63,7 @@ Do not open 80, 443 or 1883. The plain Broker listener on 1883 is not published 
 
 ## 3. Publish the App: tunnel and Access
 
-The `tunnel` service connects out to Cloudflare, so nothing listens for web traffic on the VPS.
+The `tunnel` container connects out to Cloudflare, so nothing listens for web traffic on the VPS.
 
 1. In Cloudflare **Zero Trust → Networks → Tunnels**, create a tunnel (type: Cloudflared). Copy its token into `TUNNEL_TOKEN` in `.env.cloud`.
 2. Add a **public hostname** to the tunnel: your `APP_HOST`, service type **HTTP**, URL `app:3000`. (`app` is the compose service name.)
@@ -81,7 +81,7 @@ The manifest and icons are fetched by the browser itself, which may not carry th
 
 1. In a private window, sign in through Access and the App, then open DevTools → Application → Manifest (or use "Add to Home Screen" on a phone). The manifest and the icons must load and show no errors.
 2. From a machine with no Access session: `curl -sI https://APP_HOST/manifest.webmanifest`. A `302` to `cloudflareaccess.com` is expected.
-3. **Only if** step 1 shows the manifest or icons failing (or the phone refuses to install), add a second Access application for the same hostname with the paths `/manifest.webmanifest`, `/pwa-icon/*`, `/apple-icon*` and `/icon.svg`, and a policy with action **Bypass**. Those files hold nothing private (the App's own proxy already serves them without a session). Do not bypass anything else.
+3. **Only if** step 1 shows the manifest or icons failing (or the phone refuses to install), add a second Access application for the same hostname with the paths `/manifest.webmanifest`, `/pwa-icon/*`, `/apple-icon*`, `/icon.svg` and `/favicon.ico`, and a policy with action **Bypass**. Those files hold nothing private (the App's own proxy already serves them without a session). Do not bypass anything else.
 
 ### When the Access session expires
 
@@ -120,7 +120,7 @@ This copies the Units, timers and energy history to the VPS. It changes nothing 
    ```bash
    docker compose -f docker-compose.cloud.yml --env-file .env.cloud stop app
    for f in devices timers energy; do docker compose -f docker-compose.cloud.yml --env-file .env.cloud cp $f.json app:/data/$f.json; done
-   docker compose -f docker-compose.cloud.yml --env-file .env.cloud run --rm --no-deps --user root --entrypoint chown app -R node:node /data
+   docker compose -f docker-compose.cloud.yml --env-file .env.cloud run --rm --no-deps --user root --cap-add CHOWN --entrypoint chown app -R node:node /data
    docker compose -f docker-compose.cloud.yml --env-file .env.cloud start app
    ```
 
@@ -133,11 +133,11 @@ This copies the Units, timers and energy history to the VPS. It changes nothing 
 
 ### Going back
 
-Stop the Bridge there (`docker compose -f docker-compose.bridge.yml stop`) and start the Home deployment again (`docker compose start`). Its volumes were not touched. Keep them for a week or so before removing them.
+Stop the Bridge there (`docker compose -f docker-compose.bridge.yml stop`) and start the Home deployment again with `docker compose up -d` (not `start`: step 4 replaced the Home `bridge` container with the cloud one, and `up` puts the Home one back). The Home volumes were not touched. Keep them for a week or so before removing them.
 
 ## 6. Nightly backup to R2, and restore
 
-The `backup` service copies the App's data volume (Units, timers, energy history, the sign-out marker) to a Cloudflare R2 bucket at 03:00 UTC every night, and once when it starts. The Bridge's own volume is **not** backed up off the home machine; if it is lost, the Bridge pairs with the adapters again.
+The `backup` container copies the App's data volume (Units, timers, energy history, the sign-out marker) to a Cloudflare R2 bucket at 03:00 UTC every night, and once when it starts. The Bridge's own volume is **not** backed up off the home machine; if it is lost, the Bridge pairs with the adapters again.
 
 ### Set up
 
@@ -154,9 +154,9 @@ docker compose -f docker-compose.cloud.yml --env-file .env.cloud run --rm --no-d
 
 ### Restore
 
-The `restore` service fills an **empty** `app-data` volume from the newest archive, or from the archive you name. It refuses a volume that has files in it, so it cannot overwrite live data by mistake.
+The `restore` container fills an **empty** `app-data` volume from the newest archive, or from the archive you name. It refuses a volume that has files in it, so it cannot overwrite live data by mistake.
 
-**On a new VPS** (the usual case: the old one is gone). Do steps 1 and 2 above to the point where `.env.cloud` is filled in, then **before** starting the App:
+**On a new VPS** (the usual case: the old one is gone). Do steps 1 to 3 to the point where all of `.env.cloud` is filled in (Compose reads every setting, even for services you are not starting), then **before** starting anything:
 
 ```bash
 docker compose -f docker-compose.cloud.yml --env-file .env.cloud --profile restore run --rm restore

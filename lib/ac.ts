@@ -55,6 +55,9 @@ export const DEMO_DEVICES: readonly DeviceInfo[] = [
 // topic never publishes it, so an unknown bridge counts as online and the unit's own flag decides.
 export const unitOnline = (bridge: boolean | undefined, unit: boolean) => bridge !== false && unit;
 
+// Known offline. A unit with no state yet is not "offline": a command may still reach it.
+export const isOfflineState = (s: { online: boolean } | undefined) => s?.online === false;
+
 // Trust boundary: retained MQTT payload -> state. A malformed one must not reach the UI (it reads temp.toFixed()).
 export function isAcState(x: unknown): x is AcState {
   if (typeof x !== "object" || x === null) return false;
@@ -129,5 +132,6 @@ if (process.argv[1]?.endsWith("lib/ac.ts")) {
   check(unitOnline(true, true) === true && unitOnline(true, false) === false, "bridge online: the unit's own flag decides");
   check(unitOnline(false, true) === false && unitOnline(false, false) === false, "bridge offline: every unit is offline");
   check(unitOnline(undefined, true) === true && unitOnline(undefined, false) === false, "bridge never seen: the unit's flag decides");
+  check(isOfflineState({ online: false }) && !isOfflineState({ online: true }) && !isOfflineState(undefined), "offline only when known offline");
   console.log("ac.ts checks done");
 }

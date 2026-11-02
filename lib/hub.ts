@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import mqtt from "mqtt";
-import { isAcState, unitOnline, type AcState, type DeviceState } from "./ac";
+import { isAcState, isOfflineState, unitOnline, type AcState, type DeviceState } from "./ac";
 import { listDevices, isDevice } from "./devices";
 import { parseFound, type Found } from "./discover";
 import { discoveryMessages, discoveryTopic, HA_STATUS_TOPIC } from "./ha";
@@ -16,6 +16,9 @@ type Hub = {
   scan: () => void; // ask the bridge to scan the network for adapters
 };
 const g = globalThis as unknown as { __hub?: Hub };
+
+// The bridge is gone or the unit itself is offline.
+export const isOffline = (id: string) => isOfflineState(hub().states.get(id));
 
 // One MQTT connection per server process (survives dev hot reload via globalThis).
 export function hub(): Hub {

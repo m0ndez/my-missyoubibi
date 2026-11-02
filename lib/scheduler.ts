@@ -1,5 +1,5 @@
 import { recordEnergy } from "./energy";
-import { hub } from "./hub";
+import { hub, isOffline } from "./hub";
 import { dueOnce, dueTimers, loadTimers, removeTimer } from "./timers";
 
 const g = globalThis as unknown as { __sched?: boolean };
@@ -24,12 +24,18 @@ export function startScheduler() {
       const once = dueOnce(timers, Date.now());
       // Drop instead of queueing: a 07:30 "on" must not run at 08:10 after a broker outage.
       for (const t of dueTimers(timers, new Date(), fired)) {
-        if (client.connected) client.publish(`mhi/${t.device}/set`, JSON.stringify(t.patch));
+        if (isOffline(t.device)) console.error(`timer ${t.id} skipped: unit ${t.device} offline`);
+        else if (client.connected) client.publish(`mhi/${t.device}/set`, JSON.stringify(t.patch));
         else console.error(`timer ${t.id} skipped: broker offline`);
       }
       // One-shot: removed once sent. With the broker down it waits (retried every tick) until it counts as missed.
+      // An offline unit counts as missed at once: waiting would send it late when the unit returns.
       for (const t of once) {
         if (t.missed) removeTimer(t.id);
+        else if (isOffline(t.device)) {
+          console.error(`timer ${t.id} missed: unit ${t.device} offline`);
+          removeTimer(t.id);
+        }
         else if (client.connected) {
           client.publish(`mhi/${t.device}/set`, JSON.stringify(t.patch));
           removeTimer(t.id);

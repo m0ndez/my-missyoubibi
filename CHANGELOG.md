@@ -6,6 +6,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 ## [Unreleased]
 
 ### Added
+- A command for an offline unit is refused with a message on the page and is never queued; a timer that comes due for an offline unit is skipped (a one-shot counts as missed) instead of firing late.
 - The bridge announces itself on a retained `mhi/_bridge/online` topic (with an MQTT last-will), and the page shows every unit offline while the bridge is disconnected instead of the last state it saw.
 - One-command setup (`npm run setup`): detects the network and timezone, writes `.env` with generated secrets, starts the stack with Docker or Podman.
 - The bridge runs in Docker and finds adapters by MAC, so fixed IP addresses aren't needed.

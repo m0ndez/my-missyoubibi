@@ -57,8 +57,9 @@ let bridge = startBridge();
 // What the bridge publishes, seen from outside.
 const states = new Map<string, Record<string, unknown>>();
 const watcher = mqtt.connect(common.MQTT_URL);
-watcher.on("connect", () => watcher.subscribe("mhi/+/state"));
-watcher.on("message", (t, b) => { const id = t.split("/")[1]; if (b.length) states.set(id, JSON.parse(b.toString())); else states.delete(id); });
+const sets: string[] = []; // every command that reached the broker
+watcher.on("connect", () => watcher.subscribe(["mhi/+/state", "mhi/+/set"]));
+watcher.on("message", (t, b) => { if (t.endsWith("/set")) { sets.push(b.toString()); return; } const id = t.split("/")[1]; if (b.length) states.set(id, JSON.parse(b.toString())); else states.delete(id); });
 
 // ---- the API, like the page uses it ---------------------------------------------------------------------------------
 let cookie = "";
@@ -136,9 +137,20 @@ await until("the page to show the unit online", () => seen.get("e2e")?.online ==
 bridge.kill("SIGKILL");
 await until("the page to show the unit offline once the bridge is gone", () => seen.get("e2e")?.online === false, 30_000);
 console.log("the bridge went away and the page shows the unit offline");
+// A command for an offline unit is refused with its own status and message, and nothing reaches the broker.
+const sentBefore = sets.length;
+const refused = await api("POST", "/api/set", { id: "e2e", patch: { power: false } });
+if (refused.status !== 409 || !/offline/.test(refused.body?.error ?? "")) fail(`a command for an offline unit must get 409 with a message, got ${refused.status} ${JSON.stringify(refused.body)}`);
+await sleep(500);
+if (sets.length !== sentBefore) fail("a refused command still reached the broker");
+console.log("a command for the offline unit was refused and nothing was sent");
 bridge = startBridge();
 await until("the page to show the unit online again", () => seen.get("e2e")?.online === true, 45_000);
 console.log("the bridge came back and the unit is online again, with no app restart");
+if ((await api("POST", "/api/set", { id: "e2e", patch: { power: false } })).status !== 200) fail("a command was refused after the bridge came back");
+await until("power off after the bridge returned", () => states.get("e2e")?.power === false);
+if (sets.length !== sentBefore + 1) fail("the refused command was replayed after the bridge returned");
+console.log("a command works again after the bridge returned, and the refused one was not replayed");
 
 const renamed = await api("PATCH", "/api/devices/e2e", { name: "Study" });
 if (renamed.status !== 200) fail("rename failed");

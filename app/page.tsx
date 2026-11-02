@@ -191,6 +191,8 @@ export default function Home() {
               settle(id);
               return router.replace("/login");
             }
+            if (res.status === 409) // unit offline: the server says why
+              return settle(id, ((await res.json().catch(() => null))?.error as string) ?? "That unit is offline.");
             if (!res.ok) throw new Error(String(res.status));
           } catch {
             settle(

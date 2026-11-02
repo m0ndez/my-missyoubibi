@@ -176,6 +176,49 @@ docker compose -f docker-compose.cloud.yml --env-file .env.cloud --profile resto
 docker compose -f docker-compose.cloud.yml --env-file .env.cloud up -d
 ```
 
+## 7. Verify it end to end
+
+Run this once after the first install, and again after changing the Broker's configuration, the tunnel or Access. Each check says what you should see. Nothing here is automated: it needs your real VPS, Cloudflare account and Units. Use a Unit you can switch back by hand.
+
+In the commands, `VPS` is the VPS's address, `BROKER_HOST` and `APP_HOST` are your names, and `$DEV` / `$APPPW` are the `MQTT_DEVICE_PASS` and `MQTT_PASS` values. `mosquitto_pub` and `mosquitto_sub` come with Mosquitto; if you don't have them, run them as `docker run --rm eclipse-mosquitto:2 mosquitto_pub ...` (add `--capath /etc/ssl/certs`).
+
+**Ports and credentials** (from a machine that is not the VPS, ideally on mobile data):
+
+1. *Only 8883 and SSH are open.* `nmap -Pn -p 1-10000 VPS` lists 22 and 8883 and nothing else. In particular, 1883 and 3000 are closed or filtered, and `curl -m 5 http://VPS` gets no answer.
+2. *The Bridge's login works on 8883.* `mosquitto_sub -h BROKER_HOST -p 8883 --capath /etc/ssl/certs -u device -P "$DEV" -t 'mhi/#' -v -C 3` prints retained messages (including `mhi/_bridge/online 1` while the Bridge is up). No certificate error.
+3. *It cannot command Units.* With MQTT 5 so a refusal is reported: `mosquitto_pub -V mqttv5 -q 1 -h BROKER_HOST -p 8883 --capath /etc/ssl/certs -u device -P "$DEV" -t mhi/<unit id>/set -m '{"power":true}'` prints `Not authorized`, and the Unit does not change.
+4. *The `app` login is refused on 8883.* The same command with `-u app -P "$APPPW"` fails with `not authorised`.
+5. *The plain listener is not reachable from the internet.* `nc -vz -w 5 VPS 1883` times out or is refused. (Run it from the VPS itself for the contrast: `docker compose ... exec mosquitto mosquitto_pub -h localhost -u app -P "$APPPW" -t mhi/_health -m 1` works there.)
+
+**Outage** (use the page open on your phone, signed in):
+
+6. *Units go offline when the home internet goes.* Cut the home internet (unplug the router's WAN cable) and start a clock. Within about 30 seconds every Unit shows offline (not its last state). Restore it: the Units return online on their own. `docker compose ... ps` on the VPS shows the `app` container's uptime did not reset, so nothing was restarted.
+7. *Commands and timers while offline.* With the internet cut, press a control: the page says the Unit is offline and nothing is sent. Set a one-shot timer for two minutes ahead, wait, and restore the internet after it was due: it is shown as missed and nothing fires late. A recurring timer due during the outage is skipped (the App's log says so: `docker compose ... logs app`).
+
+**The installed page and Access** (on a phone):
+
+8. *Install behind Access.* Open `https://APP_HOST`, sign in through Access and the shared password, then Add to Home Screen. The page installs with its icon and name, and opens full screen. If it will not install or the icon is blank, see [Check the installed page behind Access](#check-the-installed-page-behind-access) for the bypass.
+9. *An expired Access session sends you to sign in, not into a loop.* With the page open, in Cloudflare Zero Trust revoke your Access session (Access → Applications → your application → **Revoke existing sessions** on your user; the exact menu changes), then make the live stream fail: switch the phone to airplane mode for ten seconds, or run `docker compose ... restart app`. The page should reload to Access's sign-in page once. It must not keep reconnecting or reloading. (It is not known whether Access ends an already-open stream when its session expires; this check is how you find out.)
+
+**Certificate** (this is also where it is confirmed that the Broker re-reads the files on a signal):
+
+10. *Renewal reaches the Broker without a restart.* Note the current certificate: `openssl s_client -connect BROKER_HOST:8883 -servername BROKER_HOST </dev/null 2>/dev/null | openssl x509 -noout -serial -issuer`. Then force one renewal, with `exec` so no container is recreated: `docker compose ... exec certbot certbot renew --force-renewal --deploy-hook /deploy-hook.sh`. The same `openssl` command now shows a different serial, and `docker compose ... ps` shows the `mosquitto` container's uptime did not reset. Let's Encrypt allows five identical certificates a week, so do this once. (Do not test with `ACME_STAGING=1` here: changing it recreates `certbot`, and the Broker shares its process namespace, so the Broker restarts too, and the Bridge refuses a staging certificate anyway. Use staging only for the first issuance, in step 2.)
+11. *The Bridge reconnects.* An existing connection keeps working through a renewal; only a new one sees the new certificate. Restart the Bridge at home: `docker compose -f docker-compose.bridge.yml restart bridge`. Its log shows it connected with no certificate error, and the Units are online.
+
+**Backup** (without touching live data):
+
+12. *Restore onto a clean volume.* Wait for or force a backup (`docker compose ... run --rm --no-deps -e BACKUP_ONCE=1 backup`), then restore into a scratch project, whose volume is new and empty:
+
+    ```bash
+    docker compose -p restoretest -f docker-compose.cloud.yml --env-file .env.cloud --profile restore run --rm --no-deps restore
+    docker compose -p restoretest -f docker-compose.cloud.yml --env-file .env.cloud run --rm --no-deps --entrypoint sh restore -c 'ls -l /data && cat /data/devices.json'
+    docker volume rm restoretest_app-data     # clean up
+    ```
+
+    The listing has `devices.json`, `timers.json` and `energy.json`, owned by uid 1000, with your Units' names and MACs in `devices.json`. (To restore for real, see [section 6](#restore).)
+
+If a check fails, note which one and what you saw, and fix it before relying on the deployment.
+
 ## Security model
 
 What the Cloud deployment exposes, and what protects it. The Home deployment's rules ([SECURITY.md](../SECURITY.md)) do not apply to it as written: that page's "never expose" lines are about the Home deployment.

@@ -164,5 +164,6 @@ only the Bridge stays at home, connecting outward. It uses the same images and t
 4. [Run the Bridge at home](cloud-deployment.md#4-run-the-bridge-at-home) with `docker-compose.bridge.yml`.
 5. [Move your data over](cloud-deployment.md#5-move-your-data-from-the-home-deployment-once) from the Home deployment, once.
 6. [Nightly backup to R2, and restore](cloud-deployment.md#6-nightly-backup-to-r2-and-restore).
+7. [Verify it end to end](cloud-deployment.md#7-verify-it-end-to-end): a checklist to run once, with the commands and what you should see.
 
 Before you rely on it, read its [security model](cloud-deployment.md#security-model).

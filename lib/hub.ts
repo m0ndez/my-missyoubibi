@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import mqtt from "mqtt";
-import { isAcState, type AcState, type DeviceState } from "./ac";
+import { isAcState, unitOnline, type AcState, type DeviceState } from "./ac";
 import { listDevices, isDevice } from "./devices";
 import { parseFound, type Found } from "./discover";
 import { discoveryMessages, discoveryTopic, HA_STATUS_TOPIC } from "./ha";
@@ -27,6 +27,7 @@ export function hub(): Hub {
     client.on("error", (e) => console.error("mqtt:", e.message)); // mqtt.js retries; unhandled 'error' would crash
     const raw = new Map<string, AcState>();
     const online = new Map<string, boolean>();
+    let bridgeOnline: boolean | undefined; // mhi/_bridge/online: undefined until seen (an older bridge never publishes it)
     const states = new Map<string, DeviceState>();
     const setups = new Map<string, string>();
     let found: Found = { scanning: false, units: [] };
@@ -37,7 +38,7 @@ export function hub(): Hub {
     const publish = (id: string) => {
       const s = raw.get(id);
       if (!s || !online.has(id)) return; // wait for both retained messages: no false "offline" flash
-      const d = { ...s, online: online.get(id)! };
+      const d = { ...s, online: unitOnline(bridgeOnline, online.get(id)!) };
       states.set(id, d);
       bus.emit("state", id, d);
     };
@@ -63,6 +64,7 @@ export function hub(): Hub {
     };
 
     client.on("connect", () => {
+      client.subscribe("mhi/_bridge/online"); // first, so its retained value is likelier to arrive before any unit's (no false "online" flash)
       client.subscribe(["mhi/+/state", "mhi/+/online", "mhi/+/setup", "mhi/_found"]);
       if (process.env.HA_DISCOVERY === "1") client.subscribe(HA_STATUS_TOPIC);
       publishDevices();
@@ -75,6 +77,14 @@ export function hub(): Hub {
       const [, id, kind] = topic.split("/");
       if (topic === "mhi/_found") {
         found = parseFound(payload.toString()) ?? found;
+        return;
+      }
+      if (topic === "mhi/_bridge/online") {
+        const now = payload.toString() === "1";
+        if (now !== bridgeOnline) {
+          bridgeOnline = now;
+          raw.forEach((_, id) => publish(id)); // every unit's shown state follows the bridge
+        }
         return;
       }
       let known = false;

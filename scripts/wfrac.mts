@@ -306,9 +306,16 @@ async function ensurePaired(ip: string, mac: string): Promise<boolean> {
 // ---- MQTT ---------------------------------------------------------------------------------------------------------
 const client = mqtt.connect(process.env.MQTT_URL ?? "mqtt://localhost:1883", {
   username: process.env.MQTT_USER, password: process.env.MQTT_PASS,
+  // One last-will for the whole bridge (a connection has only one): if it drops, the app shows every unit offline.
+  // A short keepalive makes the broker notice a silent drop (home internet cut) in about 22 s, not the 90 s the default would take.
+  keepalive: 15,
+  will: { topic: "mhi/_bridge/online", payload: Buffer.from("0"), retain: true, qos: 1 },
 });
 client.on("error", (e) => console.error("mqtt:", e.message));
-client.on("connect", () => client.subscribe(["mhi/_devices", "mhi/_scan", "mhi/+/set"]));
+client.on("connect", () => {
+  client.publish("mhi/_bridge/online", "1", { retain: true, qos: 1 });
+  client.subscribe(["mhi/_devices", "mhi/_scan", "mhi/+/set"]);
+});
 
 // Container healthcheck: a file touched while the bridge is alive and connected to the broker (adapters being offline is not unhealthy).
 const heartbeat = process.env.WFRAC_HEARTBEAT;

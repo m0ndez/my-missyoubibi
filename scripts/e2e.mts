@@ -1,7 +1,7 @@
 // End-to-end smoke test: `npm run build && npm run e2e`. Starts everything for real, on throwaway ports and data:
 //   broker (in-process) <- built app (next start) -> broker <- bridge (scripts/wfrac.mts) -> fake adapter (127.0.0.1:51443)
 // (needs `npm run build` first: it runs the standalone server). Then drives it only through the app's public API: sign in, add a unit by MAC, see it online, power it on, change the setpoint,
-// remove it. Exits non-zero on the first thing that doesn't happen.
+// lose and regain the bridge (the page must show the unit offline, then online), remove it. Exits non-zero on the first thing that doesn't happen.
 import { Aedes } from "aedes";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
@@ -47,9 +47,12 @@ start("app", "node", [".next/standalone/server.js"], {
   ...common, APP_PASSWORD: PASSWORD, AUTH_SECRET: SECRET, DATA_DIR: path.join(tmp, "app"), HA_DISCOVERY: "",
   NODE_ENV: "production", PORT: String(APP), HOSTNAME: "127.0.0.1",
 });
-start("bridge", "npx", ["tsx", "scripts/wfrac.mts"], {
+const bridgeEnv = {
   ...common, DATA_DIR: path.join(tmp, "bridge"), WFRAC_WRITE: "1", WFRAC_DEVICES: "e2e=127.0.0.1", WFRAC_CURL: "", WFRAC_SUBNET: "",
-});
+};
+// Run through node directly (not npx), so killing it really kills the bridge and the broker sees a dropped connection.
+const startBridge = () => start("bridge", "node", ["--import", "tsx", "scripts/wfrac.mts"], bridgeEnv);
+let bridge = startBridge();
 
 // What the bridge publishes, seen from outside.
 const states = new Map<string, Record<string, unknown>>();
@@ -83,6 +86,26 @@ cookie = (login.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join
 if (!cookie.includes("session=")) fail("signing in did not give a session cookie");
 console.log("signed in");
 
+// What the page shows: the same /api/events stream the browser reads, latest state per unit.
+const seen = new Map<string, Record<string, unknown>>();
+const events = await fetch(`${ORIGIN}/api/events`, { headers: { Cookie: cookie } });
+if (events.status !== 200 || !events.body) fail(`the state stream refused a signed-in request: ${events.status}`);
+void (async () => {
+  const dec = new TextDecoder();
+  let buf = "";
+  for await (const chunk of events.body as unknown as AsyncIterable<Uint8Array>) {
+    buf += dec.decode(chunk, { stream: true });
+    for (let i = buf.indexOf("\n\n"); i >= 0; i = buf.indexOf("\n\n")) {
+      const line = buf.slice(0, i).split("\n").find((l) => l.startsWith("data: "));
+      buf = buf.slice(i + 2);
+      if (!line) continue;
+      const o = JSON.parse(line.slice(6));
+      if (o.gone) seen.delete(o.id);
+      else if ("online" in o) seen.set(o.id, o);
+    }
+  }
+})().catch(() => {}); // the stream ends with an error when the app is stopped at teardown: nothing to report
+
 // (fetch won't send a made-up Host header, so this one goes through node:http.)
 const rebind = await new Promise<number>((res) => http.get({ host: "127.0.0.1", port: APP, path: "/login", headers: { host: "attacker.example.com" } }, (r) => { r.resume(); res(r.statusCode ?? 0); }));
 if (rebind !== 421) fail(`a request for an unlisted Host must get 421, got ${rebind}`);
@@ -107,6 +130,15 @@ await until("power on and 26 degrees", () => { const s = states.get("e2e"); retu
 console.log("power on and setpoint 26 reached the unit and came back");
 await until("humidity from the unit's sensor", () => states.get("e2e")?.humidity === 54);
 console.log("the unit's humidity (54 %) came through the bridge")
+
+// The bridge disappears (a dropped connection, so its last-will fires): the page must stop showing the unit as online.
+await until("the page to show the unit online", () => seen.get("e2e")?.online === true);
+bridge.kill("SIGKILL");
+await until("the page to show the unit offline once the bridge is gone", () => seen.get("e2e")?.online === false, 30_000);
+console.log("the bridge went away and the page shows the unit offline");
+bridge = startBridge();
+await until("the page to show the unit online again", () => seen.get("e2e")?.online === true, 45_000);
+console.log("the bridge came back and the unit is online again, with no app restart");
 
 const renamed = await api("PATCH", "/api/devices/e2e", { name: "Study" });
 if (renamed.status !== 200) fail("rename failed");

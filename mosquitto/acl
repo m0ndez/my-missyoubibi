@@ -24,3 +24,5 @@ topic write mhi/+/state
 topic write mhi/+/online
 topic write mhi/+/setup
 topic write mhi/_found
+# mhi/_bridge/online (the bridge's own presence, "0" as its last-will) matches mhi/+/online here and above: no separate rule. The app
+# can also write it, as it can every mhi/+/online (to clear a removed unit's retained value); that wildcard can't be narrowed without that.

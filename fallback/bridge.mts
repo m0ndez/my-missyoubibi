@@ -14,6 +14,7 @@ client.on("error", (e) => console.error("mqtt:", e.message));
 const known = new Map<string, Partial4>(DEVICES.map((d) => [d.id, {}]));
 
 client.on("connect", () => {
+  client.publish("mhi/_bridge/online", "1", { retain: true }); // clears a "0" a killed wfrac bridge left retained
   for (const { id } of DEVICES) {
     client.subscribe([`mhi-${id}/+`, `mhi/${id}/set`]); // `mhi-<id>/+` skips set/* and OpData/*
   }

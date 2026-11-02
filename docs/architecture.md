@@ -18,6 +18,7 @@ Defined in `lib/ac.ts`. `<id>` is the unit's id (letters, digits, dashes).
 | `mhi/<id>/state` | bridge → app, retained | JSON state: power, mode, setpoint, fan, louvers, silent, room temperature and humidity, outdoor temperature, energy, fault |
 | `mhi/<id>/online` | bridge → app, retained | `1` / `0` |
 | `mhi/<id>/set` | app → bridge | JSON patch of the fields to change |
+| `mhi/_bridge/online` | bridge → app, retained | `1` when the bridge connects, `0` as its MQTT last-will. While it is `0` the app shows every unit offline. A bridge that never publishes it counts as online |
 | `mhi/<id>/setup` | bridge → app, retained | progress of a new unit: `finding`, `pairing`, `ready`, `error:<reason>` |
 | `mhi/_devices` | app → bridge, retained | the unit list `[{id, name, mac}]` (the app owns it) |
 | `mhi/_scan` | app → bridge | "scan the network for adapters" |

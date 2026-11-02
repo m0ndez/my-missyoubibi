@@ -2,6 +2,7 @@
 //   mhi/<id>/state   retained JSON AcState, published by the device
 //   mhi/<id>/online  retained "1" | "0"; device sets "1" on connect and registers "0" as MQTT last-will
 //   mhi/<id>/set     JSON Partial<AcControl>, published by the web app
+//   mhi/_bridge/online  retained "1" | "0"; the bridge sets "1" on connect and registers "0" as MQTT last-will (all units go offline)
 import { check } from "./check";
 export const MODES = ["auto", "cool", "dry", "fan"] as const;
 export const FANS = ["auto", "1", "2", "3", "4"] as const;
@@ -49,6 +50,10 @@ export const DEMO_DEVICES: readonly DeviceInfo[] = [
   { id: "bedroom", name: "Bedroom", mac: "348e89a1b2c4" },
   { id: "office", name: "Office", mac: "348e89a1b2c5" },
 ];
+
+// A unit is online only while the bridge is. `bridge` is undefined until mhi/_bridge/online has been seen: a bridge older than that
+// topic never publishes it, so an unknown bridge counts as online and the unit's own flag decides.
+export const unitOnline = (bridge: boolean | undefined, unit: boolean) => bridge !== false && unit;
 
 // Trust boundary: retained MQTT payload -> state. A malformed one must not reach the UI (it reads temp.toFixed()).
 export function isAcState(x: unknown): x is AcState {
@@ -121,5 +126,8 @@ if (process.argv[1]?.endsWith("lib/ac.ts")) {
   const st = { power: true, mode: "cool", fan: "auto", temp: 24, roomTemp: 25 };
   check(isAcState(st) && isAcState({ ...st, fan: null, mode: null, roomTemp: null }), "state ok, unknown mode/fan ok");
   check(!isAcState({ ...st, temp: undefined }) && !isAcState({ ...st, power: "on" }) && !isAcState(null), "bad state rejected");
+  check(unitOnline(true, true) === true && unitOnline(true, false) === false, "bridge online: the unit's own flag decides");
+  check(unitOnline(false, true) === false && unitOnline(false, false) === false, "bridge offline: every unit is offline");
+  check(unitOnline(undefined, true) === true && unitOnline(undefined, false) === false, "bridge never seen: the unit's flag decides");
   console.log("ac.ts checks done");
 }

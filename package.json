@@ -20,6 +20,7 @@
     "provision": "tsx scripts/provision.mts",
     "build": "next build",
     "typecheck": "tsc --noEmit",
+    "check:cloud": "sh scripts/check-cloud.sh",
     "e2e": "tsx scripts/e2e.mts",
     "e2e:plain": "E2E_PLAIN_BRIDGE=1 tsx scripts/e2e.mts",
     "start": "next start",

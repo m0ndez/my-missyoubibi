@@ -1,3 +1,4 @@
+# Keep the `bridge` service below in step with the one in docker-compose.yml (it differs only in how it reaches the broker).
 # Cloud deployment, home side: runs only the Bridge, which dials out to the cloud Broker over verified TLS. It publishes no port and
 # holds one secret (its own broker password). Start it with `docker compose -f docker-compose.bridge.yml --env-file .env.bridge up -d`.
 # Settings: .env.bridge.example. Run it from the same directory as the Home deployment's docker-compose.yml to keep that Bridge's

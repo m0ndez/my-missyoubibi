@@ -6,6 +6,9 @@ updates:
   - package-ecosystem: docker # the only Dockerfile, at the repo root; base images are pinned by digest
     directory: /
     schedule: { interval: weekly }
+  - package-ecosystem: docker-compose # the cloud and bridge compose files pin their images by digest too
+    directory: /
+    schedule: { interval: weekly }
   - package-ecosystem: npm
     directory: /
     schedule: { interval: weekly }

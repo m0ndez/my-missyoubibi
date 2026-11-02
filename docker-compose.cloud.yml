@@ -48,7 +48,7 @@ services:
 
   # Issues the certificate and renews it. After every issue or renewal its deploy hook signals the broker to re-read the files.
   certbot:
-    image: certbot/dns-cloudflare:v5.9.0
+    image: certbot/dns-cloudflare:v5.9.0@sha256:8216d4732d11772a9cf2fb30d022abf9eec7c83af2e33f002aa9e371c5192b67
     restart: unless-stopped
     entrypoint: ["/certbot.sh"]
     environment:
@@ -101,7 +101,7 @@ services:
   # Publishes the app at https://${APP_HOST} through Cloudflare (outbound only). The tunnel's public hostname, pointed at
   # http://app:3000, and the Access policy in front of it are set in the Cloudflare dashboard: docs/cloud-deployment.md.
   tunnel:
-    image: cloudflare/cloudflared:2026.10.7
+    image: cloudflare/cloudflared:2026.10.7@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
@@ -113,7 +113,7 @@ services:
 
   # Copies the app's data to R2 every night (cloud/backup.sh). Restore: `docker compose --profile restore run --rm restore`, see docs/cloud-deployment.md.
   backup:
-    image: rclone/rclone:1.75.2
+    image: rclone/rclone:1.75.2@sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110bb88088f2c70d43eb5
     restart: unless-stopped
     entrypoint: ["/bin/sh", "/backup.sh"]
     user: "1000:1000" # the app's own user, so it can read every file in the volume and needs no capabilities
@@ -129,7 +129,7 @@ services:
 
   # Not started by `up`. Fills an EMPTY app-data volume from the newest backup (or the archive named after `run --rm restore`).
   restore:
-    image: rclone/rclone:1.75.2
+    image: rclone/rclone:1.75.2@sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110bb88088f2c70d43eb5
     profiles: [restore]
     entrypoint: ["/bin/sh", "/restore.sh"]
     environment: *r2

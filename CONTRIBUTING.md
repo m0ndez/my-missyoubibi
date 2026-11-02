@@ -23,6 +23,7 @@ npm run build && npm run e2e   # the end-to-end smoke test (broker, bridge, fake
 
 CI runs the same, plus Docker builds for amd64 and arm64 (each on a native runner).
 
+- Changed `cloud/*.sh` (the backup and restore)? `npm run check:cloud` runs them in a container against a local stand-in for the bucket (needs Docker or Podman).
 - This repository uses a newer Next.js than most documentation describes: `AGENTS.md` points to the bundled docs in
   `node_modules/next/dist/docs/`.
 - Protocol findings belong in `docs/firmware.md` with how you observed them. Mark anything not verified on a real unit as such.

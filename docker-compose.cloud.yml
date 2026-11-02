@@ -1,5 +1,6 @@
 # Cloud deployment, VPS side: `docker compose -f docker-compose.cloud.yml --env-file .env.cloud up -d`. Settings: .env.cloud.example.
-# Broker listeners: 1883 plain, compose network only (for the web app, added later); 8883 TLS, public, the bridge's `device` user only.
+# Broker listeners: 1883 plain, compose network only (the web app); 8883 TLS, public, the bridge's `device` user only.
+# The web app is published only through the tunnel connector (outbound connection to Cloudflare): no web port is opened on the VPS.
 services:
   mosquitto:
     image: eclipse-mosquitto:2
@@ -59,7 +60,48 @@ services:
       timeout: 3s
       retries: 60 # first issuance can take a minute or two (DNS propagation)
 
+  app:
+    image: ghcr.io/m0ndez/my-missyoubibi-app:${VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      mosquitto: { condition: service_healthy }
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/health"] # non-2xx (broker unreachable) fails it
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    # No `ports`: only the tunnel connector reaches it, over the compose network.
+    environment:
+      TZ: ${TZ:-UTC} # timers and daily energy totals use this timezone: keep it equal to the one the data was made under
+      MQTT_URL: mqtt://mosquitto:1883
+      MQTT_USER: app
+      MQTT_PASS: ${MQTT_PASS:?set it in .env.cloud}
+      APP_PASSWORD: ${APP_PASSWORD:?set it in .env.cloud}
+      AUTH_SECRET: ${AUTH_SECRET:?set it in .env.cloud}
+      ALLOWED_HOSTS: ${APP_HOST:?set it in .env.cloud} # the app refuses any Host header that is not this name
+      HA_DISCOVERY: ${HA_DISCOVERY:-}
+      ENERGY_RATE: ${ENERGY_RATE:-}
+      ENERGY_CURRENCY: ${ENERGY_CURRENCY:-}
+    volumes: ["app-data:/data"]
+
+  # Publishes the app at https://${APP_HOST} through Cloudflare (outbound only). The tunnel's public hostname, pointed at
+  # http://app:3000, and the Access policy in front of it are set in the Cloudflare dashboard: docs/cloud-deployment.md.
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.7
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set it in .env.cloud}
+    depends_on:
+      app: { condition: service_healthy }
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
 volumes:
   mosquitto-data:
   letsencrypt:
   broker-certs:
+  app-data:

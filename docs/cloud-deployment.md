@@ -86,3 +86,51 @@ The manifest and icons are fetched by the browser itself, which may not carry th
 ### When the Access session expires
 
 With the page open, the page notices that its live stream fails and Access answers with a sign-in redirect, and reloads to sign in again. A short network drop only reconnects.
+
+## 4. Run the Bridge at home
+
+`docker-compose.bridge.yml` runs only the Bridge. It takes the Broker's address and the Bridge's own password, publishes no port and accepts no inbound connection.
+
+```bash
+cp .env.bridge.example .env.bridge && chmod 600 .env.bridge   # BROKER_HOST, MQTT_DEVICE_PASS (from the VPS), WFRAC_SUBNET, TZ
+docker compose -f docker-compose.bridge.yml --env-file .env.bridge up -d
+docker compose -f docker-compose.bridge.yml logs -f bridge     # connected to the broker; the adapters are found
+```
+
+The Bridge keeps its identity on the adapters and their certificate pins in its `bridge-data` volume. **Run this from the same directory as the Home deployment's `docker-compose.yml`**: Compose names volumes after the directory, so the Bridge picks up the volume the Home deployment already made and does not have to pair with the adapters again. Compose will warn about "orphan containers" from the other file; ignore it and never add `--remove-orphans`.
+
+If the Bridge cannot verify the Broker's certificate it stops with a clear error. A staging certificate (`ACME_STAGING=1`) is untrusted, so use the real one here.
+
+## 5. Move your data from the Home deployment (once)
+
+This copies the Units, timers and energy history to the VPS. It changes nothing on the Home deployment's volumes, so you can go back (below).
+
+1. **Same timezone.** `TZ` in `.env.cloud` must equal the `TZ` the Home deployment used (`grep TZ .env`). Timers fire at local clock times and daily energy totals split at local midnight, so a different value shifts both.
+2. **Note what you will check:** open the Home page and write down the Unit names, the timers, and today's and yesterday's energy totals.
+3. **Stop the Home deployment**, so nothing writes while you copy and the two Apps never fire the same timer: in the Home directory, `docker compose stop`. Use `stop`, not `down -v`: `-v` deletes the volumes this procedure depends on.
+4. **Export the three files** from the stopped App container:
+
+   ```bash
+   mkdir export && for f in devices timers energy; do docker compose cp app:/data/$f.json export/$f.json; done
+   ```
+
+   A file that does not exist (no timers yet, for example) is fine: skip it.
+5. **Copy them to the VPS** (`scp export/*.json you@vps:`) and put them into the App's volume there:
+
+   ```bash
+   docker compose -f docker-compose.cloud.yml --env-file .env.cloud stop app
+   for f in devices timers energy; do docker compose -f docker-compose.cloud.yml --env-file .env.cloud cp $f.json app:/data/$f.json; done
+   docker compose -f docker-compose.cloud.yml --env-file .env.cloud run --rm --no-deps --user root --entrypoint chown app -R node:node /data
+   docker compose -f docker-compose.cloud.yml --env-file .env.cloud start app
+   ```
+
+6. **Start the Bridge at home** (step 4).
+7. **Check:**
+   - Sign in at `https://APP_HOST`. The same Unit names are there, each online within about 30 seconds.
+   - The timers list equals what you wrote down.
+   - The Energy report shows the same totals for the days you noted. The history is intact if the days before today are unchanged.
+   - Send one command to a Unit and see it change.
+
+### Going back
+
+Stop the Bridge there (`docker compose -f docker-compose.bridge.yml stop`) and start the Home deployment again (`docker compose start`). Its volumes were not touched. Keep them for a week or so before removing them.

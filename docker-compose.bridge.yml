@@ -1,0 +1,32 @@
+# Cloud deployment, home side: runs only the Bridge, which dials out to the cloud Broker over verified TLS. It publishes no port and
+# holds one secret (its own broker password). Start it with `docker compose -f docker-compose.bridge.yml --env-file .env.bridge up -d`.
+# Settings: .env.bridge.example. Run it from the same directory as the Home deployment's docker-compose.yml to keep that Bridge's
+# volume (its identity on the adapters and their certificate pins): see docs/cloud-deployment.md.
+services:
+  bridge:
+    image: ghcr.io/m0ndez/my-missyoubibi-bridge:${VERSION:-latest}
+    build: { context: ., target: bridge }
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck: # the bridge touches this file every 15 s while it is connected to the broker
+      test: ["CMD-SHELL", "find /tmp/heartbeat -mmin -1 | grep -q ."]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    environment:
+      TZ: ${TZ:-UTC}
+      WFRAC_HEARTBEAT: /tmp/heartbeat
+      MQTT_URL: mqtts://${BROKER_HOST:?set it in .env.bridge}:8883 # the certificate is checked against the system trust store
+      MQTT_USER: device
+      MQTT_PASS: ${MQTT_DEVICE_PASS:?set it in .env.bridge}
+      DATA_DIR: /data
+      WFRAC_WRITE: "1"
+      WFRAC_SUBNET: ${WFRAC_SUBNET:-} # the LAN to scan for adapters, e.g. 192.168.1.0/24
+      WFRAC_DEVICES: ${WFRAC_DEVICES:-} # optional fixed addresses, id=ip,...
+      WFRAC_REPIN: ${WFRAC_REPIN:-}
+    volumes: ["bridge-data:/data"] # its identity on the adapters (operator id) and certificate pins: keep it
+
+volumes:
+  bridge-data:

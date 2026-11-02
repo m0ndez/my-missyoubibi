@@ -1,0 +1,65 @@
+# Cloud deployment, VPS side: `docker compose -f docker-compose.cloud.yml --env-file .env.cloud up -d`. Settings: .env.cloud.example.
+# Broker listeners: 1883 plain, compose network only (for the web app, added later); 8883 TLS, public, the bridge's `device` user only.
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    pid: "service:certbot" # joins certbot's PID namespace so its deploy hook can send SIGHUP to the broker
+    # Only the TLS listener is published; 1883 is not.
+    ports: ["8883:8883"]
+    environment:
+      MQTT_PASS: ${MQTT_PASS:?set it in .env.cloud}
+      MQTT_DEVICE_PASS: ${MQTT_DEVICE_PASS:?set it in .env.cloud}
+    # One password file per listener, so `app` can only log in on 1883 and `device` only on 8883.
+    command:
+      - sh
+      - -c
+      - |
+        rm -f /tmp/passwd-app /tmp/passwd-device &&
+        mosquitto_passwd -b -c /tmp/passwd-app app "$$MQTT_PASS" &&
+        mosquitto_passwd -b -c /tmp/passwd-device device "$$MQTT_DEVICE_PASS" &&
+        chown mosquitto /tmp/passwd-app /tmp/passwd-device &&
+        exec mosquitto -c /mosquitto/config/mosquitto.conf
+    volumes:
+      - ./cloud/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/acl:/mosquitto/config/acl:ro
+      - mosquitto-data:/mosquitto/data
+      - broker-certs:/certs:ro
+    depends_on:
+      certbot: { condition: service_healthy } # the TLS listener needs the certificate files to start
+    healthcheck:
+      test: ["CMD-SHELL", 'mosquitto_pub -h localhost -u app -P "$$MQTT_PASS" -t mhi/_health -m 1']
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # Issues the certificate and renews it. After every issue or renewal its deploy hook signals the broker to re-read the files.
+  certbot:
+    image: certbot/dns-cloudflare:v5.9.0
+    restart: unless-stopped
+    entrypoint: ["/certbot.sh"]
+    environment:
+      BROKER_HOST: ${BROKER_HOST:?set it in .env.cloud}
+      ACME_EMAIL: ${ACME_EMAIL:?set it in .env.cloud}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:?set it in .env.cloud}
+      ACME_STAGING: ${ACME_STAGING:-}
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, KILL] # install -o 1883 in the hook, and signalling the broker (another uid)
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: [/tmp] # the Cloudflare token is written here: keep it off disk
+    volumes:
+      - ./cloud/certbot.sh:/certbot.sh:ro
+      - ./cloud/deploy-hook.sh:/deploy-hook.sh:ro
+      - letsencrypt:/etc/letsencrypt
+      - broker-certs:/certs
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /certs/privkey.pem"]
+      interval: 10s
+      timeout: 3s
+      retries: 60 # first issuance can take a minute or two (DNS propagation)
+
+volumes:
+  mosquitto-data:
+  letsencrypt:
+  broker-certs:

@@ -43,6 +43,7 @@ next-env.d.ts
 # app data
 /data
 !.env.example
+!.env.cloud.example
 
 # editor / agent tooling (personal)
 /.serena/

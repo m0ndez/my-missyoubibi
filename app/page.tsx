@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AcControl, DeviceState } from "@/lib/ac";
+import { probeVerdict } from "@/lib/reauth";
 import { AcCard } from "./ac-card";
 import { AddUnit } from "./add-unit";
 import { ROOM_NAMES, type Unit } from "./control";
@@ -85,10 +86,14 @@ export default function Home() {
         setBackendDown(false);
       };
       es.onerror = () => {
-        setLive(false); // EventSource reconnects by itself, but it cannot see a 401: probe, so an expired session goes to /login
-        fetch("/api/timers", { cache: "no-store" }).then(
-          (r) => r.status === 401 && router.replace("/login"),
-          () => {},
+        setLive(false); // EventSource reconnects by itself, but it cannot see a 401 or a sign-in redirect: probe, so an expired session goes to /login
+        fetch("/api/timers", { cache: "no-store", redirect: "manual" }).then(
+          (r) => {
+            const v = probeVerdict(r);
+            if (v === "login") router.replace("/login");
+            else if (v === "reauth") location.reload(); // a full navigation lets Cloudflare Access put up its sign-in
+          },
+          () => {}, // a plain network blip: the stream reconnects
         );
         // The browser retries a dropped connection by itself, but an error answer (backend restarting, 5xx) closes the stream for
         // good: reconnect ourselves, backing off, so the page recovers without a reload.

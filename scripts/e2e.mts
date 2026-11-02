@@ -12,6 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import tls from "node:tls";
 import mqtt from "mqtt";
+import { probeVerdict } from "../lib/reauth";
 
 const BROKER = 18830, APP = 18831, TLS_BROKER = 18832, MAC = "001122334455", ORIGIN = `http://127.0.0.1:${APP}`;
 const PASSWORD = "e2e-Password-1234", SECRET = "e".repeat(40);
@@ -112,6 +113,18 @@ console.log("signed in");
 const seen = new Map<string, Record<string, unknown>>();
 const events = await fetch(`${ORIGIN}/api/events`, { headers: { Cookie: cookie } });
 if (events.status !== 200 || !events.body) fail(`the state stream refused a signed-in request: ${events.status}`);
+if (!events.headers.get("content-type")?.startsWith("text/event-stream")) fail("the state stream must stay an event stream (the tunnel buffers other types)");
+
+// The page's session probe (lib/reauth.ts) against the real app and against a server that answers with a sign-in redirect.
+const probe = (url: string, headers?: Record<string, string>) => fetch(url, { cache: "no-store", redirect: "manual", headers }).then(probeVerdict);
+if ((await probe(`${ORIGIN}/api/timers`, { Cookie: cookie })) !== "ok") fail("the page's probe must see a signed-in session as fine");
+if ((await probe(`${ORIGIN}/api/timers`)) !== "login") fail("the page's probe must send an expired session to the App's login");
+const access = http.createServer((_, out) => out.writeHead(302, { Location: "https://team.cloudflareaccess.com/login" }).end());
+await new Promise<void>((ok) => access.listen(0, "127.0.0.1", ok));
+const accessUrl = `http://127.0.0.1:${(access.address() as net.AddressInfo).port}/api/timers`;
+if ((await probe(accessUrl)) !== "reauth") fail("the page's probe must re-authenticate on a sign-in redirect");
+await new Promise((ok) => access.close(ok));
+if (await probe(accessUrl).then(() => true, () => false)) fail("a plain network failure must reject, so the page just reconnects");
 void (async () => {
   const dec = new TextDecoder();
   let buf = "";

@@ -6,6 +6,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 ## [Unreleased]
 
 ### Added
+- When the page's live stream fails and the session has been sent to a sign-in page (as Cloudflare Access does), the page reloads to sign in again instead of retrying forever; a plain network blip still just reconnects.
 - The bridge can connect to the broker over TLS (`MQTT_URL=mqtts://…`) and stops with a clear error if the broker's certificate doesn't verify; a plain `mqtt://` address works as before.
 - A command for an offline unit is refused with a message on the page and is never queued; a timer that comes due for an offline unit is skipped (a one-shot counts as missed) instead of firing late.
 - The bridge announces itself on a retained `mhi/_bridge/online` topic (with an MQTT last-will), and the page shows every unit offline while the bridge is disconnected instead of the last state it saw.

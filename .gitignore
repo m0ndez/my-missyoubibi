@@ -47,5 +47,6 @@ next-env.d.ts
 # editor / agent tooling (personal)
 /.serena/
 /.claude/
+/CLAUDE.local.md
 
 /dist

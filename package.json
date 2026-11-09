@@ -19,14 +19,14 @@
     "fake": "tsx scripts/fake-adapter.mts",
     "provision": "tsx scripts/provision.mts",
     "build": "next build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "e2e": "tsx scripts/e2e.mts",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
     "mqtt": "^5.16.0",
-    "next": "16.4.0",
+    "next": "16.4.5",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
@@ -38,7 +38,7 @@
     "aedes": "^1.2.0",
     "esbuild": "^0.28.2",
     "eslint": "^9",
-    "eslint-config-next": "16.4.0",
+    "eslint-config-next": "16.4.5",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5"

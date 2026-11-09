@@ -139,6 +139,8 @@ export function dueOnce(timers: Timer[], nowMs: number): (Timer & { missed: bool
 
 // Self-check: `npx tsx lib/timers.ts`
 if (process.argv[1]?.endsWith("lib/timers.ts")) {
+  process.env.DATA_DIR = fs.mkdtempSync(path.join(process.env.TMPDIR ?? "/tmp", "timers-check-")); // isTimer needs "srk24" to be a known unit
+  fs.writeFileSync(path.join(process.env.DATA_DIR, "devices.json"), JSON.stringify([{ id: "srk24", name: "SRK24", mac: "001122334455" }]));
   const t: Timer = { id: "a", device: "srk24", days: [1], time: "07:30", patch: { power: true } };
   const fired = new Set<string>();
   const mon0730 = new Date(2026, 9, 12, 7, 30, 5); // Monday
